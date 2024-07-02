@@ -8,6 +8,7 @@ enum BencodeType {
     Dict(HashMap<String, BencodeType>),
 }
 
+#[derive(Debug)]
 struct Bencode {
     node: BencodeType,
     len: usize,
@@ -33,35 +34,36 @@ impl Bencode {
 
         Bencode {
             node: BencodeType::Int(int),
-            len: len,
+            len,
         }
     }
 
     fn parse_str(bencoded_str: &str) -> Bencode {
-        let mut parts = bencoded_str.split(":");
-        let len = parts.next().unwrap();
-        let len_of_len = len.len();
-        let len = len.parse::<usize>().unwrap();
-        let str = &bencoded_str[len_of_len + 1..len_of_len + 1 + len];
+        let first_part = bencoded_str.split(":").next().unwrap();
+        let len_first_part = first_part.len();
+        let len_second_part = first_part.parse::<usize>().unwrap();
+        let str = &bencoded_str[len_first_part + 1..len_first_part + 1 + len_second_part];
         Bencode {
             node: BencodeType::Str(str.as_bytes().into()),
-            len: len + 3,
+            len: len_second_part + len_first_part + 1,
         }
     }
 
     fn parse_list(bencoded_str: &str) -> Bencode {
-        let mut current_char = bencoded_str.chars().nth(1);
+        let mut chars = bencoded_str.chars();
         let mut result: Vec<BencodeType> = vec![];
         let mut len = 1;
 
-        while let Some(ch) = current_char {
+        chars.next();
+
+        while let Some(ch) = chars.next() {
             if ch == 'e' {
                 break;
             }
-            let b = Bencode::from_str(&bencoded_str[1..]);
+            let b = Bencode::from_str(&bencoded_str[len..]);
             result.push(b.node);
             len += b.len;
-            current_char = bencoded_str.chars().nth(b.len);
+            chars.nth(b.len);
         }
 
         Bencode {
@@ -71,7 +73,34 @@ impl Bencode {
     }
 
     fn parse_dict(bencoded_str: &str) -> Bencode {
-        todo!()
+        let mut chars = bencoded_str.chars();
+        let mut result: HashMap<String, BencodeType> = HashMap::new();
+        let mut len = 1;
+
+        let mut slice = &bencoded_str[len..];
+
+        chars.next();
+
+        while let Some(ch) = chars.next() {
+            if ch == 'e' {
+                break;
+            }
+            let b = Bencode::from_str(slice);
+            slice = &slice[b.len..];
+            len += b.len;
+            let bz = Bencode::from_str(slice);
+            len += bz.len;
+            slice = &slice[bz.len..];
+            if let BencodeType::Str(str) = b.node {
+                result.insert(String::from_utf8(str).unwrap(), bz.node);
+            }
+            chars.nth(b.len + bz.len);
+        }
+
+        Bencode {
+            node: BencodeType::Dict(result),
+            len: len + 1,
+        }
     }
 }
 
@@ -125,13 +154,18 @@ mod test {
     }
     #[test]
     fn test_list() {
-        let b = Bencode::from_str("li42ee");
+        let b = Bencode::from_str("li42ei15ee");
         let n = b.node;
         assert!(matches!(n, BencodeType::List(_)));
-        assert_eq!(b.len, 6);
+        assert_eq!(b.len, 10);
         if let BencodeType::List(list) = n {
-            if let BencodeType::Int(int) = list.get(0).unwrap() {
+            if let BencodeType::Int(int) = list.first().unwrap() {
                 assert_eq!(int, &42);
+            } else {
+                panic!();
+            }
+            if let BencodeType::Int(int) = list.get(1).unwrap() {
+                assert_eq!(int, &15);
             } else {
                 panic!();
             }
@@ -141,6 +175,23 @@ mod test {
     }
     #[test]
     fn test_dict() {
-        todo!();
+        let b = Bencode::from_str("d3:bar4:spam3:fooi42ee");
+        let n = b.node;
+
+        assert!(matches!(n, BencodeType::Dict(_)));
+        assert_eq!(b.len, 22);
+        if let BencodeType::Dict(dict) = n {
+            let bar = dict.get("bar").unwrap();
+            let foo = dict.get("foo").unwrap();
+
+            if let BencodeType::Str(str) = bar {
+                assert_eq!(
+                    String::from_utf8(str.clone()).unwrap(),
+                    String::from("spam")
+                );
+            } else {
+                panic!()
+            }
+        }
     }
 }

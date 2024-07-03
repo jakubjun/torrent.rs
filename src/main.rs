@@ -14,7 +14,7 @@ struct BencodeError {
 }
 
 impl BencodeError {
-    fn from_str(msg: &str) -> Self {
+    fn new(msg: &str) -> Self {
         BencodeError {
             message: String::from(msg),
         }
@@ -35,7 +35,9 @@ impl Bencode {
             'l' => Bencode::parse_list(bencoded_input),
             'd' => Bencode::parse_dict(bencoded_input),
             _ if first_char.is_numeric() => Bencode::parse_str(bencoded_input),
-            _ => Err(BencodeError::from_str("unsupported bencode type char")),
+            _ => Err(BencodeError::new(
+                "bencoded_input should be a properly formatted BEncode string",
+            )),
         }
     }
 
@@ -53,18 +55,32 @@ impl Bencode {
                 node: BencodeType::Int(int),
                 len,
             }),
-            Err(_) => Err(BencodeError::from_str("...")),
+            Err(_) => Err(BencodeError::new(
+                "part between 'i' and 'e' should be a properly formatted integer",
+            )),
         }
     }
 
     fn parse_str(bencoded_str: &str) -> Result<Self, BencodeError> {
-        let first_part = bencoded_str.split(':').next().unwrap();
-        let len_first_part = first_part.len();
-        let len_second_part = first_part.parse::<usize>().unwrap();
-        let str = &bencoded_str[len_first_part + 1..len_first_part + 1 + len_second_part];
+        let first_part = if let Some(first_part) = bencoded_str.split(':').next() {
+            first_part
+        } else {
+            return Err(BencodeError::new("string element should contain a ':'"));
+        };
+
+        let len_second_part = if let Ok(len_second_part) = first_part.parse::<usize>() {
+            len_second_part
+        } else {
+            return Err(BencodeError::new(
+                "the part before ':' should be a properly formatted integer",
+            ));
+        };
+
+        let str = &bencoded_str[first_part.len() + 1..first_part.len() + 1 + len_second_part];
+
         Ok(Bencode {
             node: BencodeType::Str(str.as_bytes().into()),
-            len: len_first_part + 1 + len_second_part,
+            len: first_part.len() + 1 + len_second_part,
         })
     }
 
@@ -156,7 +172,7 @@ fn main() {
 mod test {
     use super::*;
     #[test]
-    fn test_int() {
+    fn test_parse_int() {
         let b = Bencode::from_str("i42e").unwrap();
         let n = b.node;
         assert!(matches!(n, BencodeType::Int(_)));
@@ -166,7 +182,7 @@ mod test {
         }
     }
     #[test]
-    fn test_str() {
+    fn test_parse_str() {
         let b = Bencode::from_str("10:spam1spam1").unwrap();
         let n = b.node;
         assert!(matches!(n, BencodeType::Str(_)));
@@ -176,7 +192,7 @@ mod test {
         }
     }
     #[test]
-    fn test_list() {
+    fn test_parse_list() {
         let b = Bencode::from_str("li42ei15e5:abcdee").unwrap();
         let n = b.node;
         assert!(matches!(n, BencodeType::List(_)));
@@ -213,7 +229,7 @@ mod test {
         );
     }
     #[test]
-    fn test_dict() {
+    fn test_parse_dict() {
         let b = Bencode::from_str("d3:bar4:spam3:fooi42ee").unwrap();
         let n = b.node;
 

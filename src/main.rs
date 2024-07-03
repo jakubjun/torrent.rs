@@ -45,14 +45,16 @@ impl Bencode {
         let str = &bencoded_str[len_first_part + 1..len_first_part + 1 + len_second_part];
         Bencode {
             node: BencodeType::Str(str.as_bytes().into()),
-            len: len_second_part + len_first_part + 1,
+            len: len_first_part + 1 + len_second_part,
         }
     }
 
     fn parse_list(bencoded_str: &str) -> Bencode {
         let mut chars = bencoded_str.chars();
         let mut result: Vec<BencodeType> = vec![];
-        let mut len = 1;
+
+        // skip 0th because of the 'l' list start char
+        let mut remaining_bencoded_str = &bencoded_str[1..];
 
         chars.next();
 
@@ -60,24 +62,24 @@ impl Bencode {
             if ch == 'e' {
                 break;
             }
-            let b = Bencode::from_str(&bencoded_str[len..]);
+            let b = Bencode::from_str(remaining_bencoded_str);
+            remaining_bencoded_str = &remaining_bencoded_str[b.len..];
             result.push(b.node);
-            len += b.len;
             chars.nth(b.len);
         }
 
         Bencode {
             node: BencodeType::List(result),
-            len: len + 1,
+            len: bencoded_str.len() - remaining_bencoded_str.len() + 1,
         }
     }
 
     fn parse_dict(bencoded_str: &str) -> Bencode {
         let mut chars = bencoded_str.chars();
         let mut result: HashMap<String, BencodeType> = HashMap::new();
-        let mut len = 1;
 
-        let mut slice = &bencoded_str[len..];
+        // skip 0th because of the 'd' dict start char
+        let mut remaining_bencoded_str = &bencoded_str[1..];
 
         chars.next();
 
@@ -85,21 +87,23 @@ impl Bencode {
             if ch == 'e' {
                 break;
             }
-            let b = Bencode::from_str(slice);
-            slice = &slice[b.len..];
-            len += b.len;
-            let bz = Bencode::from_str(slice);
-            len += bz.len;
-            slice = &slice[bz.len..];
-            if let BencodeType::Str(str) = b.node {
-                result.insert(String::from_utf8(str).unwrap(), bz.node);
+
+            let key = Bencode::from_str(remaining_bencoded_str);
+            remaining_bencoded_str = &remaining_bencoded_str[key.len..];
+
+            let val = Bencode::from_str(remaining_bencoded_str);
+            remaining_bencoded_str = &remaining_bencoded_str[val.len..];
+
+            if let BencodeType::Str(str) = key.node {
+                result.insert(String::from_utf8(str).unwrap(), val.node);
             }
-            chars.nth(b.len + bz.len);
+            chars.nth(key.len + val.len);
         }
 
         Bencode {
             node: BencodeType::Dict(result),
-            len: len + 1,
+            // 1 is the ':' delimiter
+            len: bencoded_str.len() - remaining_bencoded_str.len() + 1,
         }
     }
 }
@@ -154,24 +158,40 @@ mod test {
     }
     #[test]
     fn test_list() {
-        let b = Bencode::from_str("li42ei15ee");
+        let b = Bencode::from_str("li42ei15e5:abcdee");
         let n = b.node;
         assert!(matches!(n, BencodeType::List(_)));
-        assert_eq!(b.len, 10);
-        if let BencodeType::List(list) = n {
-            if let BencodeType::Int(int) = list.first().unwrap() {
-                assert_eq!(int, &42);
-            } else {
-                panic!();
-            }
-            if let BencodeType::Int(int) = list.get(1).unwrap() {
-                assert_eq!(int, &15);
-            } else {
-                panic!();
-            }
+        assert_eq!(b.len, 17);
+        let list = if let BencodeType::List(list) = n {
+            list
         } else {
             panic!();
-        }
+        };
+
+        let int = if let BencodeType::Int(int) = list.first().unwrap() {
+            int
+        } else {
+            panic!();
+        };
+
+        assert_eq!(int, &42);
+
+        let int = if let BencodeType::Int(int) = list.get(1).unwrap() {
+            int
+        } else {
+            panic!();
+        };
+        assert_eq!(int, &15);
+
+        let str = if let BencodeType::Str(str) = list.get(2).unwrap() {
+            str
+        } else {
+            panic!();
+        };
+        assert_eq!(
+            String::from_utf8(str.clone()).unwrap(),
+            String::from("abcde")
+        );
     }
     #[test]
     fn test_dict() {

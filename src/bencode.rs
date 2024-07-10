@@ -7,7 +7,7 @@ use std::{
 
 #[derive(Debug)]
 #[allow(dead_code)]
-enum BencodeType {
+pub enum BencodeType {
     Int(i32),
     Str(Vec<u8>),
     List(Vec<BencodeType>),
@@ -30,7 +30,7 @@ impl BencodeError {
 
 #[derive(Debug)]
 pub struct Bencode {
-    node: BencodeType,
+    pub node: BencodeType,
     len: usize,
 }
 

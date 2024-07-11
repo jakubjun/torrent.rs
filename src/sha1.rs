@@ -27,24 +27,32 @@ fn sha1(input: String) -> Vec<u8> {
 
     input.extend(original_len);
 
+    // break message into 512-bit chunks
+
     // I copy-pasted this code from StackOverflow without reading the answer
     // surrounding it that told me to write a comment explaining why this code
     // is actually safe for my own use case.
     let chunks = unsafe {
-        let ratio = mem::size_of::<u8>() / mem::size_of::<u64>();
+        let ratio = mem::size_of::<u8>() / mem::size_of::<u32>();
 
-        let length = input.len() / 8;
-        let capacity = input.capacity() / 8;
-        let ptr = input.as_mut_ptr() as *mut u64;
+        let length = input.len() / 4;
+        let capacity = input.capacity() / 4;
+        let ptr = input.as_mut_ptr() as *mut u32;
 
         // Don't run the destructor for vec32
         mem::forget(input);
 
         // Construct new Vec
         Vec::from_raw_parts(ptr, length, capacity)
-    };
+    }; // broken into 32 bit chunks ... 16 of these is a 512 bit chunk
+       //
+       //
+    dbg!(chunks.len());
 
-    dbg!(chunks);
+    for i in 0..chunks.len() / 16 {
+        // break chunk into sixteen 32-bit big-endian words w[i], 0 ≤ i ≤ 15
+        let ch = &chunks[i * 16..(i + 1) * 16]; // 512 bit chunk
+    }
 
     todo!();
 }

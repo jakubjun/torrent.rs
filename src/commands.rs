@@ -44,13 +44,17 @@ pub async fn start_download() -> io::Result<()> {
     payload.extend((0x27101980 as u32).to_be_bytes());
     payload.extend((0 as u32).to_be_bytes());
     payload.extend((0xabab as u32).to_be_bytes());
-    loop {
-        let len = sock.send(&payload).await?;
-        println!("{:?} bytes sent", len);
+    // loop {
+    let len = sock.send(&payload).await?;
+    println!("{:?} bytes sent", len);
 
-        let len = sock.recv(&mut buf).await?;
-        println!("{:?} bytes received from {:?}", len, remote_addr);
-    }
+    let len = sock.recv(&mut buf).await?;
+    println!("{:?} bytes received from {:?}", len, remote_addr);
+
+    let conn_bytes = <[u8; 8]>::try_from(&buf[0..16]).unwrap();
+    let connection_id = u64::from_be_bytes(conn_bytes);
+    // }
+    Ok(())
 }
 
 pub fn rm_torrent(torrent_id: &TorrentId) {

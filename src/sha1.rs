@@ -1,4 +1,4 @@
-fn sha1(input: &[u8]) -> Vec<u8> {
+pub fn sha1(input: &[u8]) -> Vec<u8> {
     let mut h0: u32 = 0x67452301;
     let mut h1: u32 = 0xEFCDAB89;
     let mut h2: u32 = 0x98BADCFE;

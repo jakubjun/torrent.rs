@@ -29,13 +29,14 @@ impl BencodeError {
 }
 
 #[derive(Debug)]
-pub struct Bencode {
+pub struct Bencode<'a> {
     pub node: BencodeType,
     len: usize,
+    pub slice: &'a [u8],
 }
 
-impl Bencode {
-    pub fn from_u8(bencoded_input: &[u8]) -> Result<Self, BencodeError> {
+impl<'a> Bencode<'a> {
+    pub fn from_u8(bencoded_input: &'a [u8]) -> Result<Self, BencodeError> {
         let first_char = bencoded_input.first().unwrap();
         let first_char = *first_char as char;
         let res = match first_char {
@@ -65,17 +66,17 @@ impl Bencode {
     //     }
     // }
 
-    pub fn from_file(file_path: &Path) -> Result<Self, BencodeError> {
-        let contents = if let Ok(str) = fs::read(file_path) {
-            str
-        } else {
-            return Err(BencodeError::new("Should have been able to read the file"));
-        };
+    // pub fn from_file(file_path: &Path) -> Result<Self, BencodeError> {
+    //     let contents = if let Ok(str) = fs::read(file_path) {
+    //         str
+    //     } else {
+    //         return Err(BencodeError::new("Should have been able to read the file"));
+    //     };
+    //
+    //     Bencode::from_u8(&contents)
+    // }
 
-        Bencode::from_u8(&contents)
-    }
-
-    fn parse_int(bencoded_str: &[u8]) -> Result<Self, BencodeError> {
+    fn parse_int(bencoded_str: &'a [u8]) -> Result<Self, BencodeError> {
         let mut parts = bencoded_str[1..].split(|b| *b as char == 'e');
         // TODO
         let part = str::from_utf8(parts.next().unwrap()).unwrap();
@@ -84,6 +85,7 @@ impl Bencode {
         match part.parse::<i32>() {
             Ok(int) => Ok(Bencode {
                 node: BencodeType::Int(int),
+                slice: &bencoded_str[..len],
                 len,
             }),
             Err(_) => Err(BencodeError::new(
@@ -92,7 +94,7 @@ impl Bencode {
         }
     }
 
-    fn parse_str(bencoded_str: &[u8]) -> Result<Self, BencodeError> {
+    fn parse_str(bencoded_str: &'a [u8]) -> Result<Self, BencodeError> {
         let first_part = if let Some(first_part) = bencoded_str.split(|b| *b as char == ':').next()
         {
             first_part
@@ -115,14 +117,16 @@ impl Bencode {
         };
 
         let str = &bencoded_str[first_part.len() + 1..first_part.len() + 1 + len_second_part];
+        let len = first_part.len() + 1 + len_second_part;
 
         Ok(Bencode {
             node: BencodeType::Str(str.to_vec()),
-            len: first_part.len() + 1 + len_second_part,
+            len,
+            slice: &bencoded_str[..len],
         })
     }
 
-    fn parse_list(bencoded_str: &[u8]) -> Result<Self, BencodeError> {
+    fn parse_list(bencoded_str: &'a [u8]) -> Result<Self, BencodeError> {
         let mut chars = bencoded_str.iter();
         let mut result: Vec<BencodeType> = vec![];
 
@@ -140,14 +144,16 @@ impl Bencode {
             result.push(b.node);
             chh = chars.nth(b.len - 1);
         }
+        let len = bencoded_str.len() - remaining_bencoded_str.len() + 1;
 
         Ok(Bencode {
             node: BencodeType::List(result),
-            len: bencoded_str.len() - remaining_bencoded_str.len() + 1,
+            len,
+            slice: &bencoded_str[..len],
         })
     }
 
-    fn parse_dict(bencoded_str: &[u8]) -> Result<Self, BencodeError> {
+    fn parse_dict(bencoded_str: &'a [u8]) -> Result<Self, BencodeError> {
         let mut chars = bencoded_str.iter();
         let mut result: HashMap<String, BencodeType> = HashMap::new();
 
@@ -172,11 +178,13 @@ impl Bencode {
             }
             chh = chars.nth(key.len + val.len - 1);
         }
+        let len = bencoded_str.len() - remaining_bencoded_str.len() + 1;
 
         Ok(Bencode {
             node: BencodeType::Dict(result),
             // 1 is the ':' delimiter
-            len: bencoded_str.len() - remaining_bencoded_str.len() + 1,
+            len,
+            slice: &bencoded_str[..len],
         })
     }
 }
@@ -204,6 +212,8 @@ impl Bencode {
 
 #[cfg(test)]
 mod test {
+    use crate::sha1::sha1;
+
     use super::*;
     #[test]
     fn test_parse_int() {
@@ -312,7 +322,14 @@ mod test {
     fn test_parse_dict_recursive() {
         let b = Bencode::from_u8("d1:ad1:ai25eee".as_bytes()).unwrap();
         assert_eq!(b.len, 14);
+        println!("------------------------------------------------------------------------------");
         let dict = if let BencodeType::Dict(dict) = b.node {
+            println!("{:?}", String::from_utf8(b.slice.to_vec()));
+            let sss: String = sha1(b.slice)
+                .iter()
+                .map(|b| format!("{:02x}", b).to_string())
+                .collect();
+            println!("{:?}", sss);
             dict
         } else {
             panic!();

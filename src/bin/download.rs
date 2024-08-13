@@ -54,11 +54,35 @@ fn parse_connect_response(buf: &Buffer) -> (TrackerAction, TransactionId, Connec
     )
 }
 
-fn make_announce_request(connection_id: &ConnectionId) {
+fn make_announce_request(
+    connection_id: &ConnectionId,
+    transaction_id: &TransactionId,
+    info_hash: String,
+    downloaded: u64,
+    left: u64,
+    uploaded: u64,
+    event: u32,
+    ip: u32,
+    num_want: u32,
+    key: u32,
+    port: u16,
+) -> AnnounceRequest {
     let mut res: AnnounceRequest = [0x00; 98];
     res[0..8].copy_from_slice(&connection_id.to_be_bytes());
     res[8..12].copy_from_slice(&(TrackerAction::Announce as u32).to_be_bytes());
-    res[12..16].copy_from_slice(&connection_id.to_be_bytes());
+    res[12..16].copy_from_slice(&transaction_id.to_be_bytes());
+    res[16..36].copy_from_slice(info_hash.as_bytes());
+    res[36..56].copy_from_slice("lorem ipsum dolor si".as_bytes());
+    res[56..64].copy_from_slice(&downloaded.to_be_bytes());
+    res[64..72].copy_from_slice(&left.to_be_bytes());
+    res[72..80].copy_from_slice(&uploaded.to_be_bytes());
+    res[80..84].copy_from_slice(&event.to_be_bytes());
+    res[84..88].copy_from_slice(&ip.to_be_bytes());
+    res[88..92].copy_from_slice(&key.to_be_bytes());
+    res[92..96].copy_from_slice(&num_want.to_be_bytes());
+    res[96..98].copy_from_slice(&port.to_be_bytes());
+
+    res
 }
 
 fn parse_announce_response(buf: &Buffer) {}
@@ -82,6 +106,10 @@ async fn main() -> io::Result<()> {
     let len = sock.recv(&mut buf).await?;
 
     let (received_action, received_trans_id, received_connection_id) = parse_connect_response(&buf);
+
+    let left ;
+    let info_hash;
+    let announce_request = make_announce_request(received_connection_id, trans_id, info_hash, 0, left, 0, 0, 0, -1, key, port)
 
     dbg!(received_connection_id);
     Ok(())
